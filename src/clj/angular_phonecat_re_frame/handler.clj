@@ -5,8 +5,7 @@
             [hiccup.core :refer [html]]
             [hiccup.page :refer [include-js include-css]]
             [angular-phonecat-re-frame.middleware :refer [wrap-middleware]]
-            [environ.core :refer [env]]
-            [ring.middleware.json :refer [wrap-json-response]]))
+            [environ.core :refer [env]]))
 
 (def mount-target
   [:div#app
@@ -27,17 +26,9 @@
      mount-target
      (include-js "js/app.js")]]))
 
-(def phones [{:name "Nexus S" :snippet "Fast just got faster with Nexus S."}
-             {:name "Motorola XOOM™ with Wi-Fi" :snippet "The Next, Next Generation tablet."}
-             {:name "Motoral Xoom" :snippet "The Next, Next Generation tablet."}])
-
-(defn handler [request]
-  (response phones))
-
 (defroutes routes
            (GET "/" [] loading-page)
            (GET "/about" [] loading-page)
-           (GET "/phones/phones.json" [] (wrap-json-response handler))
 
            (resources "/")
            (not-found "Not Found"))

@@ -79,13 +79,18 @@
   (fn [db]
     (reaction (:order-prop @db))))
 
+
+
 ;; -------------------------
 ;; Views
 
 (defn phone-component
   [phone]
-  [:li
-   [:span (:name phone)]
+  [:li {:class "thumbnail phone-listing"}
+   [:a {:href (str "#/phones/" (:id phone))
+     :class "thumb"}
+    [:img {:src (:imageUrl phone)}]]
+    [:a {:href (str "phones/" (:id phone))} (:name phone)]
    [:p (:snippet phone)]])
 
 (defn matches-query?
@@ -147,17 +152,33 @@
   [:div [:h2 "About angular-phonecat-re-frame"]
    [:div [:a {:href "/"} "go to the home page"]]])
 
+(defn phone-page [{phone-id :phone-id}]
+  [:div "TBD: detail view for"
+   [:span phone-id]])
+
 (defn current-page []
-  [:div [(session/get :current-page)]])
+  [(session/get :current-page) (session/get :params)])
+
 
 ;; -------------------------
 ;; Routes
+(defn redirect-to
+  [resource]
+  (secretary/dispatch! resource)
+  (.setToken (History.) resource))
+
+(secretary/defroute "/phones/:phone-id" {:as params}
+                    (session/put! :current-page #'phone-page)
+                    (session/put! :params params))
 
 (secretary/defroute "/" []
                     (session/put! :current-page #'home-page))
 
 (secretary/defroute "/about" []
                     (session/put! :current-page #'about-page))
+
+(secretary/defroute "*" []
+                    (redirect-to "/phones"))
 
 ;; -------------------------
 ;; Initialize app
