@@ -13,8 +13,19 @@
   (:import goog.History))
 
 
+(enable-console-print!)
+
 ;; -------------------------
 ;; Re-frame data
+
+(re-frame/register-handler
+  :initialise-db                                            ;; usage: (dispatch [:initialise-db])
+  (fn
+    [_ _]                                                   ;; Ignore both params (db and v).
+    {:phones       []
+     :phone-details  {}
+     :search-input ""
+     :order-prop   "name"}))
 
 (re-frame/register-sub                                      ;; a new subscription handler
   :phones                                                   ;; usage (subscribe [:phones])
@@ -38,20 +49,12 @@
   :load-phones
   (fn
     [app-state _]
-    (ajax/GET "phones/phones.json"
-      {:handler #(re-frame/dispatch [:process-phones-response %1])
-      :error-handler #(re-frame/dispatch [:process-phones-bad-response %1])
-      :response-format :json
-      :keywords? true})
+    (ajax/GET "/phones/phones.json"
+              {:handler         #(re-frame/dispatch [:process-phones-response %1])
+               :error-handler   #(re-frame/dispatch [:process-phones-bad-response %1])
+               :response-format :json
+               :keywords?       true})
     app-state))
-
-(re-frame/register-handler
-  :initialise-db                                            ;; usage: (dispatch [:initialise-db])
-  (fn
-    [_ _]                                                   ;; Ignore both params (db and v).
-    {:phones []
-    :search-input ""
-    :order-prop "name" }))
 
 (defn handle-search-input-entered
   [app-state [_ search-input]]
@@ -79,6 +82,43 @@
   (fn [db]
     (reaction (:order-prop @db))))
 
+(re-frame/register-sub
+  :phone-details
+  (fn [db]
+    (reaction (:phone-details @db))))
+
+(re-frame/register-sub
+  :phone-query
+  (fn [db [_ phone-id]]
+    (let [phone-details-reaction (reaction (:phone-details @db))]
+      (reaction ((keyword phone-id) @phone-details-reaction)))))
+
+(re-frame/register-handler
+  :process-phone-detail-response
+  (fn
+    ;; store info for the specific phone-id in the db
+    [app-state [_ phone-id response]]
+    (assoc-in app-state [:phone-details (keyword phone-id)] response)))
+
+(re-frame/register-handler
+  :process-phone-detail-bad-response
+  (fn
+    [app-state [_ [phone-id response]]]
+    (println "Error getting phone detail for id: " phone-id)
+    (println response)
+    app-state))
+
+(re-frame/register-handler
+  :load-phone-detail
+  (fn
+    ;; fetch information for the phone with the given phone-id
+    [app-state [_ phone-id]]
+    (ajax/GET (str "/phones/" phone-id ".json")
+              {:handler #(re-frame/dispatch [:process-phone-detail-response phone-id %1])
+               :error-handler #(re-frame/dispatch [:process-phone-detail-bad-response phone-id %1])
+               :response-format :json
+               :keywords? true})
+    app-state))
 
 
 ;; -------------------------
@@ -87,10 +127,10 @@
 (defn phone-component
   [phone]
   [:li {:class "thumbnail phone-listing"}
-   [:a {:href (str "#/phones/" (:id phone))
-     :class "thumb"}
-    [:img {:src (:imageUrl phone)}]]
-    [:a {:href (str "phones/" (:id phone))} (:name phone)]
+   [:a {:href  (str "#/phones/" (:id phone))
+        :class "thumb"}
+    [:img {:src (str "/" (:imageUrl phone))}]]
+   [:a {:href (str "/phones/" (:id phone))} (:name phone)]
    [:p (:snippet phone)]])
 
 (defn matches-query?
@@ -152,13 +192,138 @@
   [:div [:h2 "About angular-phonecat-re-frame"]
    [:div [:a {:href "/"} "go to the home page"]]])
 
-(defn phone-page [{phone-id :phone-id}]
-  [:div "TBD: detail view for"
-   [:span phone-id]])
-
 (defn current-page []
   [(session/get :current-page) (session/get :params)])
 
+;; -------------------------
+;; Phone details views
+
+(defn phone-info-template
+  [section-title attributes-map]
+  [:li
+   [:span section-title]
+   [:dl
+    (map (fn [attribute]
+           ^{:key attribute} [:div
+                              [:dt (:name attribute)]
+                              [:dd (:value attribute)]])
+         attributes-map)]])
+
+(defn thumbnails
+  [phone]
+  [:ul {:class "phone-thumbs"}
+   (for [image (:images @phone)]
+     ^{:key image} [:li [:img {:src   (str "/" image)
+                               :class "phone"}]])])
+
+(defn availability
+  [availability]
+  [:li
+   [:span "Availability and Networks"]
+   [:dl
+    [:dt "Availability"]
+    (for [availability @availability]
+      availability)]])
+
+(defn battery
+  [battery]
+  [phone-info-template "Battery" [{:name  "Type"
+                                   :value (:type @battery)}
+                                  {:name  "Talk Time"
+                                   :value (:talkTime @battery)}
+                                  {:name  "Standby time (max)"
+                                   :value (:standbyTime @battery)}]])
+
+(defn storage-and-memory
+  [storage]
+  [phone-info-template "Storage And Memory" [{:name  "RAM"
+                                              :value (:ram @storage)}
+                                             {:name  "Internal Storage"
+                                              :value (:flash @storage)}]])
+
+(defn connectivity
+  [connectivity]
+  [phone-info-template "Connectivity" [{:name  "Network Support"
+                                        :value (:cell @connectivity)}
+                                       {:name  "Wifi"
+                                        :value (:wifi @connectivity)}
+                                       {:name  "Bluetooth"
+                                        :value (:bluetooth @connectivity)}]])
+
+(defn android
+  [android]
+  [phone-info-template "Android" [{:name  "OS Version"
+                                   :value (:os @android)}
+                                  {:name  "UI"
+                                   :value (:ui @android)}]])
+
+(defn size-and-weight
+  [size-and-weight]
+  [phone-info-template "Size And Weight" [{:name  "Dimensions"
+                                           :value (:dimensions @size-and-weight)}
+                                          {:name  "Weight"
+                                           :value (:weight @size-and-weight)}]])
+
+(defn display
+  [display]
+  [phone-info-template "Display" [{:name  "Screen size"
+                                   :value (:screenSize @display)}
+                                  {:name  "Screen resolution"
+                                   :value (:screenResolution @display)}
+                                  {:name  "Touch screen"
+                                   :value (:touchScreen @display)}]])
+
+(defn hardware
+  [hardware]
+  [phone-info-template "Hardware" [{:name  "CPU"
+                                    :value (:cpu @hardware)}
+                                   {:name  "USB"
+                                    :value (:usb @hardware)}
+                                   {:name  "Audio / headphone jack"
+                                    :value (:audioJack @hardware)}
+                                   {:name  "FM Radio"
+                                    :value (:fmRadio @hardware)}
+                                   {:name  "Accelerometer"
+                                    :value (:accelerometer @hardware)}]])
+
+(defn camera
+  [camera]
+  [phone-info-template "Camera" [{:name  "Primary"
+                                  :value (:primary @camera)}
+                                 {:name  "Features"
+                                  :value (clojure.string/join ", " (:features @camera))}]])
+
+(defn additional-features
+  [additional-features]
+  [:li
+   [:span "Additional Features"]
+   [:dd @additional-features]])
+
+(defn specs
+  [phone]
+  [:ul {:class "specs"}
+   [availability (reaction (:availiability @phone))]
+   [battery (reaction (:battery @phone))]
+   [storage-and-memory (reaction (:storage @phone))]
+   [connectivity (reaction (:connectivity @phone))]
+   [android (reaction (:android @phone))]
+   [display (reaction (:display @phone))]
+   [hardware (reaction (:hardware @phone))]
+   [camera (reaction (:camera @phone))]
+   [additional-features (reaction (:additionalFeatures @phone))]])
+
+(defn phone-page [{phone-id :phone-id}]
+  (let [phone (re-frame/subscribe [:phone-query phone-id])
+        x (println (str "phone-id is :" phone-id))
+        ]
+    (fn []
+      [:div
+       [:img {:src   (str "/" (first (:images @phone)))
+              :class "phone"}]
+       [:h1 (:name @phone)]
+       [:p (:description @phone)]
+       [thumbnails phone]
+       [specs phone]])))
 
 ;; -------------------------
 ;; Routes
@@ -169,7 +334,8 @@
 
 (secretary/defroute "/phones/:phone-id" {:as params}
                     (session/put! :current-page #'phone-page)
-                    (session/put! :params params))
+                    (session/put! :params params)
+                    (re-frame/dispatch [:load-phone-detail (:phone-id params)]))
 
 (secretary/defroute "/" []
                     (session/put! :current-page #'home-page))
