@@ -3,6 +3,11 @@ body {
   padding-top: 20px;
 }
 
+.thumbnail.phone-listing img {
+    width: 100px;
+    height: 100px;
+}
+
 
 .phone-images {
   background-color: white;
