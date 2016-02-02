@@ -346,8 +346,6 @@
 (secretary/defroute "/about" []
                     (session/put! :current-page #'about-page))
 
-(secretary/defroute "*" []
-                    (redirect-to "/phones"))
 
 ;; -------------------------
 ;; Initialize app
