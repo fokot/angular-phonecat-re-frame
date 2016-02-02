@@ -120,6 +120,23 @@
                :keywords? true})
     app-state))
 
+(re-frame/register-handler
+  :set-image
+  (fn
+    [app-state [_ selected-image-url]]
+    (assoc-in app-state [:phone-details :selected-image-url] selected-image-url)))
+
+(re-frame/register-sub
+  :selected-image-url
+  (fn [db [_ phone-id]]
+    (let [phone (re-frame/subscribe [:phone-query phone-id])
+          phone-details (re-frame/subscribe [:phone-details])
+          images (reaction (:images @phone))]
+      (reaction
+        (if @phone-details
+          (if-let [image-url (:selected-image-url @phone-details)]
+            image-url
+            (first @images)))))))
 
 ;; -------------------------
 ;; Views
@@ -206,18 +223,16 @@
     (map (fn [attribute]
            ^{:key attribute} [:div
                               [:dt (:name attribute)]
-                              [:dd (condp = (:value attribute)
-                                     true "\u2713"
-                                     false "\u2718"
-                                     (:value attribute))]])
+                              [:dd (:value attribute)]])
          attributes-map)]])
 
 (defn thumbnails
   [phone]
   [:ul {:class "phone-thumbs"}
    (for [image (:images @phone)]
-     ^{:key image} [:li [:img {:src   (str "/" image)
-                               :class "phone"}]])])
+     ^{:key image} [:li [:img {:src (str "/" image)
+                               :class "phone"
+                               :on-click #(re-frame/dispatch [:set-image image])}]])])
 
 (defn availability
   [availability]
@@ -317,11 +332,10 @@
 
 (defn phone-page [{phone-id :phone-id}]
   (let [phone (re-frame/subscribe [:phone-query phone-id])
-        x (println (str "phone-id is :" phone-id))
-        ]
+        image-url (re-frame/subscribe [:selected-image-url phone-id])]
     (fn []
       [:div
-       [:img {:src   (str "/" (first (:images @phone)))
+       [:img {:src (str "/" @image-url)
               :class "phone"}]
        [:h1 (:name @phone)]
        [:p (:description @phone)]
@@ -345,7 +359,6 @@
 
 (secretary/defroute "/about" []
                     (session/put! :current-page #'about-page))
-
 
 ;; -------------------------
 ;; Initialize app
